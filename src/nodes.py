@@ -1,7 +1,7 @@
 from .retriever import BuddhistRecursiveRetriever
 from .agents import get_buddhist_master_response
 from .schema import AgentState
-from .utils import get_deepseek_model
+from .utils import get_deepseek_model, convert_to_simplified
 from camel.messages import BaseMessage
 
 
@@ -239,7 +239,7 @@ def fallback_node(state):
     
 def contextualize_node(state):
     print("--- 🧠 进入补全模式 (Contextualize) ---")
-    question = state["query"]
+    question = convert_to_simplified(state["query"])
     chat_history = state.get("chat_history", [])
     
     # 1. 准备历史记录字符串 (只取最近 3-4 句即可，太多了容易干扰)

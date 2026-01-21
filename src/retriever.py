@@ -1,12 +1,20 @@
-from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, StorageContext, load_index_from_storage
+from llama_index.core import (
+    SimpleDirectoryReader, 
+    VectorStoreIndex, 
+    StorageContext, 
+    load_index_from_storage,
+    Settings
+)
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.schema import IndexNode
 from llama_index.core.retrievers import RecursiveRetriever
 from llama_index.core.query_engine import RetrieverQueryEngine
-from llama_index.core import Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 import os
-from .config import DATA_PATH, PERSIST_DIR
+import chromadb
+from llama_index.vector_stores.chroma import ChromaVectorStore
+from .config import DATA_PATH, PERSIST_DIR, PERSIST_PATH, DEVICE
+from .utils import convert_to_simplified
 
 class BuddhistRecursiveRetriever:
     def __init__(self):
@@ -15,8 +23,8 @@ class BuddhistRecursiveRetriever:
         print("--- 正在初始化本地嵌入模型 (BGE-Small) ---")
         Settings.embed_model = HuggingFaceEmbedding(
             model_name="BAAI/bge-small-zh-v1.5",
-            # device="cuda",
-            # embed_batch_size=16,
+            device="cuda",
+            embed_batch_size=128,
         )
         # 顺便把 LLM 也关掉，不让 LlamaIndex 乱调 OpenAI
         Settings.llm = None
@@ -26,9 +34,15 @@ class BuddhistRecursiveRetriever:
             documents = SimpleDirectoryReader(
                 input_dir=DATA_PATH,
                 recursive=True,
-                required_exts=[".txt"]
+                required_exts=[".txt"],
+                num_workers=8
             ).load_data()
             
+            for doc in documents:
+                # 这一步至关重要：确保进库的向量全是简体的
+                simplified_text = convert_to_simplified(doc.get_content())
+                doc.set_content(simplified_text)
+                
             # 父块：1024 字符，提供完整语境
             parent_splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=100)
             # 子块：128 字符，用于高精匹配

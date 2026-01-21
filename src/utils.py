@@ -1,9 +1,26 @@
 import os
+import opencc
 from camel.models import ModelFactory
 from .config import OPENAI_API_KEY, MODEL_NAME
 
+
 # 定义常量，方便管理
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
+
+_cc_converter = None
+
+
+def convert_to_simplified(text: str) -> str:
+    """
+    文本清洗工具：繁体 -> 简体
+    """
+    global _cc_converter
+    if _cc_converter is None:
+        # t2s: Traditional Chinese to Simplified Chinese
+        _cc_converter = opencc.OpenCC('t2s')
+    
+    return _cc_converter.convert(text)
+
 
 def get_deepseek_model(temperature: float = 0.7):
     """
