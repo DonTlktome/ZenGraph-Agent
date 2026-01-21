@@ -1,0 +1,14 @@
+# --- 核心框架 ---
+langgraph           # 负责 Agent 状态机和流程控制
+llama-index         # 负责递归检索 (Recursive Retrieval) 和 RAG
+camel-ai            # 负责法师与初学者的角色扮演逻辑
+llama-index-embeddings-huggingface  # Embedding 
+# --- 模型接口与连接 ---
+openai              # DeepSeek 兼容 OpenAI 协议所需
+python-dotenv       # 加载 .env 中的 API Key 和配置
+
+# --- 辅助工具 (通常会被上述包自动带入，但显式写出更稳健) ---
+tiktoken            # Token 计算工具 (你之前辛苦解决的那个)
+pydantic            # 数据验证
+tqdm                # 进度条显示
+opencc-python-reimplemented     # 繁转简
