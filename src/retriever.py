@@ -13,7 +13,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 import os
 import chromadb
 from llama_index.vector_stores.chroma import ChromaVectorStore
-from .config import DATA_PATH, PERSIST_DIR, PERSIST_PATH, DEVICE
+from .config import DATA_PATH, PERSIST_PATH, DEVICE
 from .utils import convert_to_simplified
 
 class BuddhistRecursiveRetriever:
@@ -23,14 +23,14 @@ class BuddhistRecursiveRetriever:
         print("--- 正在初始化本地嵌入模型 (BGE-Small) ---")
         Settings.embed_model = HuggingFaceEmbedding(
             model_name="BAAI/bge-small-zh-v1.5",
-            device="cuda",
+            device=DEVICE,
             embed_batch_size=128,
         )
         # 顺便把 LLM 也关掉，不让 LlamaIndex 乱调 OpenAI
         Settings.llm = None
         
         # 1. 如果有缓存直接加载，否则构建
-        if not os.path.exists(PERSIST_DIR):
+        if not os.path.exists(PERSIST_PATH):
             documents = SimpleDirectoryReader(
                 input_dir=DATA_PATH,
                 recursive=True,
@@ -61,9 +61,9 @@ class BuddhistRecursiveRetriever:
                 all_nodes.append(p_node)
             
             self.index = VectorStoreIndex(all_nodes)
-            self.index.storage_context.persist(persist_dir=PERSIST_DIR)
+            self.index.storage_context.persist(persist_dir=PERSIST_PATH)
         else:
-            sc = StorageContext.from_defaults(persist_dir=PERSIST_DIR)
+            sc = StorageContext.from_defaults(persist_dir=PERSIST_PATH)
             self.index = load_index_from_storage(sc)
 
         # 2. 配置递归检索器
