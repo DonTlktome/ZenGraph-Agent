@@ -1,6 +1,5 @@
 from src.workflow import create_workflow
 from langgraph.checkpoint.memory import MemorySaver
-# from src.test_key import test_key
 
 
 def main():
@@ -14,9 +13,9 @@ def main():
     thread_id_zhangsan = "user_zhangsan_001"
     config_zhangsan = {"configurable": {"thread_id": thread_id_zhangsan}}
 
-    # 模拟用户 B (李四) 的线程
-    thread_id_lisi = "user_lisi_999"
-    config_lisi = {"configurable": {"thread_id": thread_id_lisi}}
+    # # 模拟用户 B (李四) 的线程
+    # thread_id_lisi = "user_lisi_999"
+    # config_lisi = {"configurable": {"thread_id": thread_id_lisi}}
 
     # --- 第一轮对话 ---
     print("\n=== 🟢 张三的第一问 ===")
@@ -24,8 +23,8 @@ def main():
     # 注意：第一次调用要初始化 chat_history 为空
     app.invoke({"query": query1, "chat_history": []}, config=config_zhangsan)
 
-    print("\n=== 🔵 李四的第一问 (完全不干扰张三) ===")
-    app.invoke({"query": "什么是‘空’？", "chat_history": []}, config=config_lisi)
+    # print("\n=== 🔵 李四的第一问 (完全不干扰张三) ===")
+    # app.invoke({"query": "什么是‘空’？", "chat_history": []}, config=config_lisi)
 
     # --- 第二轮对话 (测试记忆) ---
     print("\n=== 🟢 张三的第二问 (测试追问) ===")
@@ -45,4 +44,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # test_key()

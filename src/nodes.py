@@ -9,7 +9,7 @@ from camel.messages import BaseMessage
 retriever_obj = BuddhistRecursiveRetriever()
 
 
-def intent_router_node(state):
+def intent_router_node(state: AgentState):
     print("--- 🚦 正在进行意图分流 (Router) ---")
     query = state["query"]
     chat_history = state.get("chat_history", [])
@@ -56,7 +56,10 @@ def intent_router_node(state):
 
 def retrieve_node(state: AgentState):
     print("--- 正在递归检索深度语境 ---")
-    response = retriever_obj.query(state["query"])
+    search_query = state.get("standalone_query") or state["query"]
+    if search_query != state["query"]:
+        print(f"   🔍 使用增强查询检索: {search_query[:50]}...")
+    response = retriever_obj.query(search_query)
     return {"retrieved_context": str(response)}
 
 
@@ -86,8 +89,8 @@ def answer_node(state: AgentState):
     }
 
 
-def rewrite_query_node(state):
-    print("--- 🔄 启用 HyDE 技术重写查询 ---")
+def hyde_node(state: AgentState):
+    print("--- 🧠 启用 HyDE 生成假设性文档 ---")
     
     # 获取当前步数，如果没有则默认为 0
     current_step = state.get("loop_step", 0)
@@ -145,9 +148,9 @@ def rewrite_query_node(state):
 
 
 # --- 新增：相关性打分节点 ---
-def grader_node(state):
+def grader_node(state: AgentState):
     print("--- ⚖️ 正在评估经文相关性 (Grader) ---")
-    question = state["query"]
+    question = state.get("standalone_query") or state["query"]
     context = state["retrieved_context"]
     
     # 如果没检索到内容，直接打回
@@ -201,19 +204,7 @@ def grader_node(state):
         return {"grade": "no"}
     
     
-def fallback_node(state):
-    """
-    当多次检索都失败时，进入此节点。
-    """
-    print("--- 🙅 超过最大重试次数，触发熔断机制 ---")
-    return {
-        # 返回一个固定的、符合人设的道歉回复
-        "context": "（经文库中未检索到相关内容）", 
-        "query": "无法回答该问题" # 或者保留原问题
-    }
-    
-    
-def fallback_node(state):
+def fallback_node(state: AgentState):
     """
     兜底节点：当多次检索均失败时触发。
     它不直接回答，而是把 context 替换成一段“系统提示”，
@@ -237,7 +228,7 @@ def fallback_node(state):
     }
     
     
-def contextualize_node(state):
+def contextualize_node(state: AgentState):
     print("--- 🧠 进入补全模式 (Contextualize) ---")
     question = convert_to_simplified(state["query"])
     chat_history = state.get("chat_history", [])

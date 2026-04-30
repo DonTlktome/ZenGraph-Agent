@@ -12,3 +12,7 @@ tiktoken            # Token 计算工具 (你之前辛苦解决的那个)
 pydantic            # 数据验证
 tqdm                # 进度条显示
 opencc-python-reimplemented     # 繁转简
+ragas 
+langchain-openai
+langchain-huggingface
+hf_xet

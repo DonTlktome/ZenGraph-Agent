@@ -1,79 +1,64 @@
-from llama_index.core import (
-    SimpleDirectoryReader, 
-    VectorStoreIndex, 
-    StorageContext, 
-    load_index_from_storage,
-    Settings
-)
-from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core.schema import IndexNode
-from llama_index.core.retrievers import RecursiveRetriever
-from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core import StorageContext, load_index_from_storage, Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.core.schema import TextNode  # 新增：用来重建节点
 import os
 import chromadb
 from llama_index.vector_stores.chroma import ChromaVectorStore
-from .config import DATA_PATH, PERSIST_PATH, DEVICE
-from .utils import convert_to_simplified
+from .config import PERSIST_PATH, DEVICE
 
 class BuddhistRecursiveRetriever:
     def __init__(self):
-        # --- 设置本地嵌入模型 ---
-        # 我们使用一个小巧的中文增强模型，它会在你第一次运行进下载到本地
         print("--- 正在初始化本地嵌入模型 (BGE-Small) ---")
         Settings.embed_model = HuggingFaceEmbedding(
             model_name="BAAI/bge-small-zh-v1.5",
             device=DEVICE,
             embed_batch_size=128,
         )
-        # 顺便把 LLM 也关掉，不让 LlamaIndex 乱调 OpenAI
         Settings.llm = None
         
-        # 1. 如果有缓存直接加载，否则构建
-        if not os.path.exists(PERSIST_PATH):
-            documents = SimpleDirectoryReader(
-                input_dir=DATA_PATH,
-                recursive=True,
-                required_exts=[".txt"],
-                num_workers=8
-            ).load_data()
+        # 1. 连接 ChromaDB
+        self.db = chromadb.PersistentClient(path=PERSIST_PATH)
+        self.chroma_collection = self.db.get_collection("buddhist_sutras")
+        vector_store = ChromaVectorStore(chroma_collection=self.chroma_collection)
+        
+        # 加载索引框架
+        sc = StorageContext.from_defaults(persist_dir=PERSIST_PATH, vector_store=vector_store)
+        self.index = load_index_from_storage(sc)
+        
+        # 恢复正常的 top_k（因为不再需要跳过大量死节点了）
+        self.base_retriever = self.index.as_retriever(similarity_top_k=5)
+
+    def retrieve(self, query_str: str):
+        # 1. 从 ChromaDB 里捞出最匹配的几个切片（大多是 128 字的子节点）
+        raw_nodes = self.base_retriever.retrieve(query_str)
+        final_nodes = []
+        
+        for n in raw_nodes:
+            node_obj = n.node
             
-            for doc in documents:
-                # 这一步至关重要：确保进库的向量全是简体的
-                simplified_text = convert_to_simplified(doc.get_content())
-                doc.set_content(simplified_text)
+            # 2. 尝试解析它是不是某个大段落的“子节点”
+            index_id = getattr(node_obj, "index_id", None)
+            if not index_id and "index_id" in node_obj.metadata:
+                index_id = node_obj.metadata["index_id"]
                 
-            # 父块：1024 字符，提供完整语境
-            parent_splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=100)
-            # 子块：128 字符，用于高精匹配
-            child_splitter = SentenceSplitter(chunk_size=128, chunk_overlap=20)
-            
-            parent_nodes = parent_splitter.get_nodes_from_documents(documents)
-            all_nodes = []
-            
-            for i, p_node in enumerate(parent_nodes):
-                # 生成子节点并链接到父节点
-                c_nodes = child_splitter.get_nodes_from_documents([p_node])
-                for c_node in c_nodes:
-                    # IndexNode 的核心：存子块内容，但指向父块 ID
-                    idx_node = IndexNode.from_text_node(c_node, p_node.node_id)
-                    all_nodes.append(idx_node)
-                all_nodes.append(p_node)
-            
-            self.index = VectorStoreIndex(all_nodes)
-            self.index.storage_context.persist(persist_dir=PERSIST_PATH)
-        else:
-            sc = StorageContext.from_defaults(persist_dir=PERSIST_PATH)
-            self.index = load_index_from_storage(sc)
-
-        # 2. 配置递归检索器
-        base_retriever = self.index.as_retriever(similarity_top_k=3)
-        self.recursive_retriever = RecursiveRetriever(
-            "vector",
-            retriever_dict={"vector": base_retriever},
-            node_dict={n.node_id: n for n in self.index.docstore.docs.values()},
-        )
-        self.query_engine = RetrieverQueryEngine.from_args(self.recursive_retriever)
-
-    def query(self, text: str):
-        return self.query_engine.query(text)
+            if index_id:
+                # 💡 核心转折点：彻底抛弃 docstore，直接向 ChromaDB 索要父节点！
+                res = self.chroma_collection.get(ids=[index_id])
+                
+                # 如果 ChromaDB 里能找到这个 ID 对应的文本
+                if res and res["documents"] and len(res["documents"]) > 0:
+                    parent_text = res["documents"][0]
+                    # 重构一个完整的父节点并替换原来的小切片
+                    parent_node = TextNode(text=parent_text, id_=index_id)
+                    n.node = parent_node  
+                    print(f"✅ 从底库成功溯源到完整父节点！ | 长度: {len(parent_text)}字")
+                    final_nodes.append(n)
+                else:
+                    # 只有当 ChromaDB 里都没有时，才是真的脏数据
+                    print(f"⚠️ 脏数据自动过滤...")
+                    continue 
+            else:
+                # 如果它本身就是普通节点（或者直接搜到了父节点），直接用
+                final_nodes.append(n)
+                
+        return final_nodes
